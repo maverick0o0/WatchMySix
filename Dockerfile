@@ -64,7 +64,6 @@ RUN pipx install git+https://github.com/xnl-h4ck3r/waymore.git
 
 # 8) Bash helper functions (source_scan, crtsh)
 RUN cat <<'INNER_EOF' >> /etc/bash.bashrc
-
 # ---- WatchMySix helper functions ----
 source_scan(){
     DOMAIN=$1

@@ -63,7 +63,7 @@ RUN curl -fsSL https://sourcegraph.com/.api/src-cli/src_linux_amd64 -o /usr/loca
 RUN pipx install git+https://github.com/xnl-h4ck3r/waymore.git
 
 # 8) Bash helper functions (source_scan, crtsh)
-RUN cat <<'INNER_EOF' >> /etc/bash.bashrc
+RUN cat <<'INNER_EOF' > /etc/profile.d/watchmysix.sh
 # ---- WatchMySix helper functions ----
 source_scan(){
     DOMAIN=$1
@@ -91,6 +91,9 @@ END
 }
 # -------------------------------------
 INNER_EOF
+
+# Ensure script is loaded for interactive shells
+RUN echo 'source /etc/profile.d/watchmysix.sh' >> /etc/bash.bashrc
 
 # 9) DNS wordlists (static & dynamic bruteforce)
 RUN set -eux; \

@@ -63,7 +63,7 @@ RUN curl -fsSL https://sourcegraph.com/.api/src-cli/src_linux_amd64 -o /usr/loca
 RUN pipx install git+https://github.com/xnl-h4ck3r/waymore.git
 
 # 8) Bash helper functions (source_scan, crtsh)
-RUN cat <<'INNER_EOF' > /etc/profile.d/watchmysix.sh
+RUN <<'INNER_EOF' cat > /etc/profile.d/watchmysix.sh
 #!/bin/bash
 # ---- WatchMySix helper functions ----
 source_scan(){

@@ -1,25 +1,23 @@
-# WatchMySix — Subdomain Toolchain (isolated)
-FROM ubuntu:24.04
+# WatchMySix — Full stack runtime image
+FROM ubuntu:24.04 AS base
 
 ARG DEBIAN_FRONTEND=noninteractive
-# اگر نسخه‌ی Go ست نشه، از این استفاده می‌کنیم (قابل تغییر با --build-arg)
 ARG GO_VERSION=1.22.5
 
-SHELL ["/bin/bash","-lc"]
+SHELL ["/bin/bash", "-lc"]
 
-# 1) Basic libs & CLI
+# 1) Base packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl wget git jq make bash build-essential unzip \
     python3 python3-venv pipx postgresql-client \
   && rm -rf /var/lib/apt/lists/*
 
-# PATHs
 ENV PIPX_BIN_DIR=/root/.local/bin
 ENV GOPATH=/root/go
 ENV GOBIN=/usr/local/bin
 ENV PATH=/usr/local/go/bin:/root/go/bin:${PIPX_BIN_DIR}:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# 2) Check/Install Go (detect arch; version configurable)
+# 2) Install Go runtime (version configurable via --build-arg)
 RUN set -eux; \
     if ! command -v go >/dev/null 2>&1; then \
       arch="$(dpkg --print-architecture)"; \
@@ -34,16 +32,16 @@ RUN set -eux; \
     fi; \
     go version
 
-# 3) pdtm (ProjectDiscovery Tool Manager)
+# 3) ProjectDiscovery Tool Manager
 RUN go install -v github.com/projectdiscovery/pdtm/cmd/pdtm@latest && pdtm -version
 
-# 4) ProjectDiscovery tools via pdtm (هرکدام مستقل نصب شود، خطا باعث توقف نشود)
+# 4) ProjectDiscovery tools
 RUN set -eux; \
   for t in alterx chaos-client dnsx httpx katana naabu shuffledns subfinder urlfinder; do \
     echo ">>> Installing $t via pdtm"; pdtm -install "$t" || echo "WARN: $t not installed via pdtm"; \
   done
 
-# 5) Manual Go-based tools
+# 5) Additional Go-based reconnaissance tools
 RUN go install github.com/Josue87/gotator@latest \
  && go install github.com/d3mondev/puredns/v2@latest \
  && GO111MODULE=on go install github.com/jaeles-project/gospider@latest \
@@ -55,14 +53,14 @@ RUN go install github.com/Josue87/gotator@latest \
  && go install github.com/gwen001/github-subdomains@latest \
  && go install github.com/gwen001/gitlab-subdomains@latest
 
-# 6) Sourcegraph src-cli (binary)
+# 6) Sourcegraph CLI
 RUN curl -fsSL https://sourcegraph.com/.api/src-cli/src_linux_amd64 -o /usr/local/bin/src \
  && chmod +x /usr/local/bin/src
 
 # 7) waymore via pipx
 RUN pipx install git+https://github.com/xnl-h4ck3r/waymore.git
 
-# 8) Bash helper functions (source_scan, crtsh)
+# 8) Bash helper functions
 RUN <<'INNER_EOF' cat > /etc/profile.d/watchmysix.sh
 #!/bin/bash
 # ---- WatchMySix helper functions ----
@@ -93,10 +91,9 @@ END
 # -------------------------------------
 INNER_EOF
 
-# Ensure script is loaded for interactive shells
 RUN echo 'source /etc/profile.d/watchmysix.sh' >> /etc/bash.bashrc
 
-# 9) DNS wordlists (static & dynamic bruteforce)
+# 9) DNS wordlists
 RUN set -eux; \
   mkdir -p /opt/watchmysix/wordlists/static-dns /opt/watchmysix/wordlists/dynamic-dns/subdomains; \
   curl -fsSL https://wordlists-cdn.assetnote.io/data/manual/best-dns-wordlist.txt \
@@ -116,17 +113,54 @@ RUN set -eux; \
 
 # 10) Recursive DNS resolvers list
 RUN mkdir -p /opt/watchmysix/resolvers \
-  && cat <<'EOF' > /opt/watchmysix/resolvers/resolvers.txt
+  && cat <<'EORES' > /opt/watchmysix/resolvers/resolvers.txt
 8.8.4.4
 129.250.35.251
 208.67.222.222
-EOF
+EORES
 
-# 11) Smoke check (presence only; اخطار می‌دهد ولی build را نمی‌خواباند)
+# 11) Smoke check for tool presence
 RUN set -eux; \
   for bin in subfinder dnsx httpx katana naabu shuffledns alterx puredns gotator gospider anew unfurl waybackurls gau amass github-subdomains gitlab-subdomains src; do \
     command -v "$bin" >/dev/null 2>&1 || echo "WARN: $bin missing"; \
   done
 
-WORKDIR /work
-ENTRYPOINT ["/bin/bash"]
+ENV WATCHMYSIX_HOME=/opt/watchmysix
+WORKDIR ${WATCHMYSIX_HOME}
+
+# ---------- Frontend build stage ----------
+FROM node:20-bookworm-slim AS frontend-builder
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --omit=dev
+COPY frontend/ ./
+RUN npm run build
+
+# ---------- Runtime stage ----------
+FROM base AS runtime
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends nginx \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=frontend-builder /frontend/dist /srv/frontend
+COPY backend ${WATCHMYSIX_HOME}/backend
+COPY docker/nginx.conf /etc/nginx/nginx.conf
+COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
+
+RUN chmod +x /usr/local/bin/entrypoint.sh ${WATCHMYSIX_HOME}/backend/scripts/prestart.sh
+
+RUN python3 -m venv /opt/venv \
+  && /opt/venv/bin/pip install --upgrade pip \
+  && /opt/venv/bin/pip install -r ${WATCHMYSIX_HOME}/backend/requirements.txt
+
+ENV PATH=/opt/venv/bin:${PATH}
+ENV WATCHMYSIX_WORDLIST_DIR=${WATCHMYSIX_HOME}/wordlists
+ENV WATCHMYSIX_RESOLVER_DIR=${WATCHMYSIX_HOME}/resolvers
+
+WORKDIR ${WATCHMYSIX_HOME}
+
+EXPOSE 80
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

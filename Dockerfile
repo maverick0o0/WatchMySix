@@ -92,7 +92,33 @@ END
 # -------------------------------------
 INNER_EOF
 
-# 9) Smoke check (presence only; اخطار می‌دهد ولی build را نمی‌خواباند)
+# 9) DNS wordlists (static & dynamic bruteforce)
+RUN set -eux; \
+  mkdir -p /opt/watchmysix/wordlists/static-dns /opt/watchmysix/wordlists/dynamic-dns/subdomains; \
+  curl -fsSL https://wordlists-cdn.assetnote.io/data/manual/best-dns-wordlist.txt \
+    -o /opt/watchmysix/wordlists/static-dns/best-dns-wordlist.txt; \
+  curl -fsSL https://raw.githubusercontent.com/n0kovo/n0kovo_subdomains/main/n0kovo_subdomains_huge.txt \
+    -o /opt/watchmysix/wordlists/static-dns/n0kovo_subdomains_huge.txt; \
+  curl -fsSL https://raw.githubusercontent.com/infosec-au/altdns/master/words.txt \
+    -o /opt/watchmysix/wordlists/dynamic-dns/subdomains/altdns-words.txt; \
+  curl -fsSL https://raw.githubusercontent.com/ProjectAnte/dnsgen/master/dnsgen/words.txt \
+    -o /opt/watchmysix/wordlists/dynamic-dns/subdomains/dnsgen-words.txt; \
+  curl -fsSL https://gist.githubusercontent.com/six2dez/ffc2b14d283e8f8eff6ac83e20a3c4b4/raw \
+    -o /opt/watchmysix/wordlists/dynamic-dns/other.txt; \
+  cat /opt/watchmysix/wordlists/dynamic-dns/subdomains/altdns-words.txt \
+      /opt/watchmysix/wordlists/dynamic-dns/subdomains/dnsgen-words.txt \
+      /opt/watchmysix/wordlists/dynamic-dns/other.txt \
+    | sort -u > /opt/watchmysix/wordlists/dynamic-dns/words-merged.txt
+
+# 10) Recursive DNS resolvers list
+RUN mkdir -p /opt/watchmysix/resolvers \
+  && cat <<'EOF' > /opt/watchmysix/resolvers/resolvers.txt
+8.8.4.4
+129.250.35.251
+208.67.222.222
+EOF
+
+# 11) Smoke check (presence only; اخطار می‌دهد ولی build را نمی‌خواباند)
 RUN set -eux; \
   for bin in subfinder dnsx httpx katana naabu shuffledns alterx puredns gotator gospider anew unfurl waybackurls gau amass github-subdomains gitlab-subdomains src; do \
     command -v "$bin" >/dev/null 2>&1 || echo "WARN: $bin missing"; \

@@ -46,13 +46,17 @@ const resolveBaseUrl = () => {
 };
 
 const buildApiUrl = (path) => {
-  if (!path.startsWith('/')) {
-    throw new Error(`API paths must start with a leading slash. Received: ${path}`);
+  if (typeof path !== 'string' || path.length === 0) {
+    throw new Error('API path must be a non-empty string.');
   }
 
-  const url = new URL(path, resolveBaseUrl());
+  const baseUrl = resolveBaseUrl();
+  const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+  const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
 
-  if (path.startsWith('/ws/')) {
+  const url = new URL(normalizedPath, normalizedBase);
+
+  if (normalizedPath.startsWith('ws/')) {
     if (url.protocol === 'https:') {
       url.protocol = 'wss:';
     } else if (url.protocol === 'http:') {
@@ -128,7 +132,7 @@ function App() {
     if (!id) return;
 
     try {
-      const response = await fetch(buildApiUrl(`/api/jobs/${encodeURIComponent(id)}/artifacts`));
+      const response = await fetch(buildApiUrl(`jobs/${encodeURIComponent(id)}/artifacts`));
       if (!response.ok) {
         throw new Error('Failed to load artifacts');
       }
@@ -148,7 +152,7 @@ function App() {
         files.map((filename) => ({
           name: filename ?? 'Download',
           url: buildApiUrl(
-            `/jobs/${encodeURIComponent(id)}/artifacts/${encodeURIComponent(filename ?? '')}`
+            `jobs/${encodeURIComponent(id)}/artifacts/${encodeURIComponent(filename ?? '')}`
           ),
         }))
       );
@@ -164,7 +168,7 @@ function App() {
 
     cleanupSubscriptions();
 
-    const socket = new WebSocket(buildApiUrl(`/ws/jobs/${encodeURIComponent(id)}/logs`));
+    const socket = new WebSocket(buildApiUrl(`ws/jobs/${encodeURIComponent(id)}/logs`));
     logSocketRef.current = socket;
 
     socket.onmessage = (event) => {
@@ -238,7 +242,7 @@ function App() {
         },
       };
 
-      const response = await fetch(buildApiUrl('/jobs'), {
+      const response = await fetch(buildApiUrl('jobs'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

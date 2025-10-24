@@ -174,16 +174,23 @@ class JobManager:
         if not wordlist:
             await self._log(job, f"{description}: no wordlist provided, skipping")
             return
-        command = ["puredns" if phase == "static" else "shuffledns", "resolve"]
-        command.extend([str(wordlist), "-r", str(resolvers or "resolvers.txt")])
-        if config.threads:
-            command.extend(["-t", str(config.threads)])
-        if config.tools:
-            command.extend(config.tools)
-        if not shutil.which(command[0]):
-            await self._log(job, f"{description}: command {command[0]} not found, skipping")
+        executable = "puredns" if phase == "static" else "shuffledns"
+        if not shutil.which(executable):
+            await self._log(job, f"{description}: command {executable} not found, skipping")
+            return
+        targets = [target.strip() for target in context.targets if target.strip()]
+        if not targets:
+            await self._log(job, f"{description}: no valid targets provided, skipping")
             return
         output_path = job.data_path / f"{phase}_bruteforce.txt"
+        existing_entries: list[str] = []
+        seen: set[str] = set()
+        if output_path.exists():
+            for line in output_path.read_text().splitlines():
+                clean = line.strip()
+                if clean and clean not in seen:
+                    seen.add(clean)
+                    existing_entries.append(clean)
         result = ToolResult(
             tool=f"{phase}_bruteforce",
             return_code=None,
@@ -194,18 +201,60 @@ class JobManager:
         )
         job.results.append(result)
         try:
-            path, return_code = await run_command(
-                command,
-                workdir=job.data_path,
-                output_path=output_path,
-                log=lambda message: self._log(job, f"[{phase}_bruteforce] {message}"),
-                environment=context.environment or None,
-            )
-            result.return_code = return_code
-            if path:
+            successful = False
+            final_return_code: Optional[int] = None
+            for target in targets:
+                if phase == "static":
+                    command = ["puredns", "bruteforce", str(wordlist), target]
+                    resolver_path = str(resolvers or "resolvers.txt")
+                    command.extend(["-r", resolver_path])
+                else:
+                    command = ["shuffledns", "-d", target, "-w", str(wordlist)]
+                    resolver_path = str(resolvers or "resolvers.txt")
+                    command.extend(["-r", resolver_path])
+                if config.threads:
+                    command.extend(["-t", str(config.threads)])
+                if config.tools:
+                    command.extend(config.tools)
+                temp_output = job.data_path / f"{phase}_bruteforce_{uuid.uuid4().hex}.txt"
+                await self._log(job, f"{description}: running against {target}")
+                path, return_code = await run_command(
+                    command,
+                    workdir=job.data_path,
+                    output_path=temp_output,
+                    log=lambda message: self._log(job, f"[{phase}_bruteforce] {message}"),
+                    environment=context.environment or None,
+                )
+                if path:
+                    successful = True
+                    final_return_code = 0
+                    async with aiofiles.open(path, "r") as reader:
+                        async for line in reader:
+                            clean = line.strip()
+                            if clean and clean not in seen:
+                                seen.add(clean)
+                                existing_entries.append(clean)
+                    try:
+                        path.unlink()
+                    except FileNotFoundError:
+                        pass
+                else:
+                    if final_return_code is None:
+                        final_return_code = return_code
+                    await self._log(job, f"{description}: command failed for {target} with code {return_code}")
+                    try:
+                        temp_output.unlink()
+                    except FileNotFoundError:
+                        pass
+            if successful:
+                async with aiofiles.open(output_path, "w") as writer:
+                    for entry in existing_entries:
+                        await writer.write(entry + "\n")
                 result.status = "completed"
+                result.return_code = final_return_code
             else:
                 result.status = "failed"
+                result.return_code = final_return_code
         except Exception as exc:  # pragma: no cover
             result.status = "error"
             result.error = str(exc)

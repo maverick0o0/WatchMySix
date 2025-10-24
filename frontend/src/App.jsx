@@ -134,15 +134,22 @@ function App() {
       }
 
       const payload = await response.json();
-      if (!Array.isArray(payload)) return;
+      const files = Array.isArray(payload?.files) ? payload.files : [];
+
+      if (files.length === 0) {
+        setArtifacts([]);
+        setStatusMessage((prev) =>
+          !prev || prev.startsWith('Unable to refresh') ? 'No artifacts available yet.' : prev
+        );
+        return;
+      }
 
       setArtifacts(
-        payload.map((artifact) => ({
-          name: artifact.name ?? artifact.file ?? 'Download',
-          url:
-            artifact.url ??
-            artifact.href ??
-            buildApiUrl(`/api/jobs/${encodeURIComponent(id)}/artifacts/${encodeURIComponent(artifact.name ?? artifact.file ?? '')}`),
+        files.map((filename) => ({
+          name: filename ?? 'Download',
+          url: buildApiUrl(
+            `/jobs/${encodeURIComponent(id)}/artifacts/${encodeURIComponent(filename ?? '')}`
+          ),
         }))
       );
       setStatusMessage((prev) => (prev && prev.startsWith('Unable to refresh') ? '' : prev));

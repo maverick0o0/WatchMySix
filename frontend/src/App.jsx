@@ -16,6 +16,19 @@ const TOOL_OPTIONS = [
   { id: 'dynamic_bruteforce', label: 'Dynamic brute-force' },
 ];
 
+const TOOL_ID_MAP = {
+  certificate_search: 'crtsh',
+  waybackurls: 'waybackurls',
+  gau: 'gau',
+  waymore: 'waymore',
+  subfinder: 'subfinder',
+  chaos: 'chaos',
+  github: 'github-subdomains',
+  gitlab: 'gitlab-subdomains',
+  sourcegraph: 'source_scan',
+  gatherurls: 'urlfinder',
+};
+
 const API_BASE_URL = (import.meta.env?.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
 const buildApiUrl = (path) => {
@@ -146,7 +159,8 @@ function App() {
   const handleStart = async (event) => {
     event.preventDefault();
 
-    if (!targetDomain.trim()) {
+    const trimmedTarget = targetDomain.trim();
+    if (!trimmedTarget) {
       setError('Please enter a target domain.');
       return;
     }
@@ -156,6 +170,14 @@ function App() {
       return;
     }
 
+    const remappedToolIds = Array.from(
+      new Set(
+        selectedTools
+          .map((toolId) => TOOL_ID_MAP[toolId])
+          .filter((toolId) => typeof toolId === 'string' && toolId.length > 0)
+      )
+    );
+
     setError(null);
     setStatusMessage('Preparing recon job…');
     setIsRunning(true);
@@ -164,11 +186,17 @@ function App() {
 
     try {
       const payload = {
-        target: targetDomain.trim(),
-        tools: selectedTools,
+        targets: [trimmedTarget],
+        tools: remappedToolIds,
+        static_bruteforce: {
+          enabled: selectedTools.includes('static_bruteforce'),
+        },
+        dynamic_bruteforce: {
+          enabled: selectedTools.includes('dynamic_bruteforce'),
+        },
       };
 
-      const response = await fetch(buildApiUrl('/api/jobs'), {
+      const response = await fetch(buildApiUrl('/jobs'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

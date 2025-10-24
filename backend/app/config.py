@@ -19,6 +19,10 @@ class AppSettings(BaseSettings):
     data_dir: Path = Field(default=Path("/data"), env="WATCHMYSIX_DATA_DIR")
     max_concurrency: int = Field(default=4, env="WATCHMYSIX_MAX_CONCURRENCY")
     log_buffer_lines: int = Field(default=2000, env="WATCHMYSIX_LOG_BUFFER_LINES")
+    frontend_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:5173"],
+        env="WATCHMYSIX_FRONTEND_ORIGINS",
+    )
     api: APISettings = Field(default_factory=APISettings)
 
     @field_validator("data_dir", mode="before")
@@ -31,6 +35,12 @@ class AppSettings(BaseSettings):
     def _ensure_positive(cls, value: int) -> int:
         if value < 1:
             raise ValueError("max_concurrency must be greater than zero")
+        return value
+
+    @field_validator("frontend_origins", mode="before")
+    def _parse_origins(cls, value: list[str] | str) -> list[str]:
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
 
 

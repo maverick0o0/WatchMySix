@@ -62,41 +62,7 @@ RUN curl -fsSL https://sourcegraph.com/.api/src-cli/src_linux_amd64 -o /usr/loca
 # 7) waymore via pipx
 RUN pipx install git+https://github.com/xnl-h4ck3r/waymore.git
 
-# 8) Bash helper functions (source_scan, crtsh)
-RUN <<'INNER_EOF' cat > /etc/profile.d/watchmysix.sh
-#!/bin/bash
-# ---- WatchMySix helper functions ----
-source_scan(){
-    DOMAIN=$1
-    q=$(echo "$DOMAIN" | sed -e 's/\./\\\./g')
-    src search -json "([a-z\-]+)?:?(\/\/)?([a-zA-Z0-9]+[.])+(${q}) count:5000 fork:yes archived:yes" \
-      | jq -r '.Results[] | .lineMatches[].preview, .file.path' \
-      | grep -oiE "([a-zA-Z0-9]+[.])+(${q})" \
-      | awk '{ print tolower($0) }' \
-      | sort -u
-}
-
-crtsh(){
-    query=$(cat <<-END
-        SELECT
-            ci.NAME_VALUE
-        FROM
-            certificate_and_identities ci
-        WHERE
-            plainto_tsquery('certwatch', '$1') @@ identities(ci.CERTIFICATE)
-END
-)
-    echo "$query" | psql -t -h crt.sh -p 5432 -U guest certwatch \
-      | sed 's/ //g' | egrep ".*.\.$1" | sed 's/*\.//g' \
-      | tr '[:upper:]' '[:lower:]' | sort -u
-}
-# -------------------------------------
-INNER_EOF
-
-# Ensure script is loaded for interactive shells
-RUN echo 'source /etc/profile.d/watchmysix.sh' >> /etc/bash.bashrc
-
-# 9) DNS wordlists (static & dynamic bruteforce)
+# 8) DNS wordlists (static & dynamic bruteforce)
 RUN set -eux; \
   mkdir -p /opt/watchmysix/wordlists/static-dns /opt/watchmysix/wordlists/dynamic-dns/subdomains; \
   curl -fsSL https://wordlists-cdn.assetnote.io/data/manual/best-dns-wordlist.txt \
@@ -114,7 +80,7 @@ RUN set -eux; \
       /opt/watchmysix/wordlists/dynamic-dns/other.txt \
     | sort -u > /opt/watchmysix/wordlists/dynamic-dns/words-merged.txt
 
-# 10) Recursive DNS resolvers list
+# 9) Recursive DNS resolvers list
 RUN mkdir -p /opt/watchmysix/resolvers \
   && cat <<'EOF' > /opt/watchmysix/resolvers/resolvers.txt
 8.8.4.4
@@ -122,7 +88,7 @@ RUN mkdir -p /opt/watchmysix/resolvers \
 208.67.222.222
 EOF
 
-# 11) Smoke check (presence only; اخطار می‌دهد ولی build را نمی‌خواباند)
+# 10) Smoke check (presence only; اخطار می‌دهد ولی build را نمی‌خواباند)
 RUN set -eux; \
   for bin in subfinder dnsx httpx katana naabu shuffledns alterx puredns gotator gospider anew unfurl waybackurls gau amass github-subdomains gitlab-subdomains src; do \
     command -v "$bin" >/dev/null 2>&1 || echo "WARN: $bin missing"; \

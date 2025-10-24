@@ -1,13 +1,13 @@
 # WatchMySix
 
-WatchMySix is a containerized toolkit tailored for subdomain enumeration and recon workflows. The image bundles ProjectDiscovery's reconnaissance utilities (via `pdtm`), additional Go-based helpers, DNS wordlists, and handy bash helper functions so that you can jump directly into asset discovery without manually stitching the tooling together.
+WatchMySix is a containerized toolkit tailored for subdomain enumeration and recon workflows. The image bundles ProjectDiscovery's reconnaissance utilities (via `pdtm`), additional Go-based helpers, DNS wordlists, and backend automations so that you can jump directly into asset discovery without manually stitching the tooling together.
 
 ## Features
 
 - Preinstalled ProjectDiscovery CLI tools through `pdtm` (e.g., `subfinder`, `httpx`, `katana`).
 - Extra reconnaissance tools such as `puredns`, `amass`, `gotator`, `gospider`, `anew`, and more.
 - Curated DNS wordlists and resolver lists placed under `/opt/watchmysix` inside the container.
-- Convenience bash functions (`source_scan`, `crtsh`) automatically loaded for quick searches against Sourcegraph and crt.sh.
+- Backend-powered integrations for crt.sh lookups and Sourcegraph enumeration without relying on custom shell helpers.
 
 ## Requirements
 
@@ -47,15 +47,7 @@ puredns bruteforce /opt/watchmysix/wordlists/static-dns/best-dns-wordlist.txt ex
   -r /opt/watchmysix/resolvers/resolvers.txt
 ```
 
-The helper functions added to `/etc/bash.bashrc` are ready to use:
-
-```bash
-# Search Sourcegraph for potential subdomains
-source_scan example.com
-
-# Query crt.sh for historical certificates
-crtsh example.com
-```
+Sourcegraph lookups are orchestrated within the backend service using the `src` CLI, so you no longer need interactive shell helpers to collect matches. crt.sh collection is also handled programmatically; however, the CLI tools installed in the container remain available if you prefer to run ad-hoc commands manually.
 
 ## Updating Tools
 

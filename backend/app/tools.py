@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
+import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -105,6 +108,92 @@ async def run_crtsh(context: ToolContext, log: Callable[[str], Awaitable[None]])
     return output_path if output_path.exists() else None
 
 
+async def run_source_scan(context: ToolContext, log: Callable[[str], Awaitable[None]]) -> Optional[Path]:
+    if shutil.which("src") is None:
+        await log("Sourcegraph CLI 'src' is not installed; skipping source_scan")
+        return None
+
+    if not context.targets:
+        await log("No targets provided for source_scan")
+        return None
+
+    output_path = context.workdir / "source_scan.txt"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    env = None
+    if context.environment:
+        env = {**os.environ, **context.environment}
+
+    discovered: set[str] = set()
+
+    def collect_from_node(node: object, pattern: re.Pattern[str]) -> None:
+        if isinstance(node, str):
+            for match in pattern.finditer(node):
+                discovered.add(match.group(0).lower())
+        elif isinstance(node, list):
+            for item in node:
+                collect_from_node(item, pattern)
+        elif isinstance(node, dict):
+            for value in node.values():
+                collect_from_node(value, pattern)
+
+    for target in context.targets:
+        clean_target = target.strip()
+        if not clean_target:
+            continue
+        escaped_target = re.escape(clean_target)
+        pattern = re.compile(rf"(?:[a-zA-Z0-9-]+\.)+{escaped_target}", re.IGNORECASE)
+        query = (
+            f'patternType:regexp "(?:[a-zA-Z0-9-]+\\.)+{escaped_target}" '
+            "count:5000 fork:yes archived:yes"
+        )
+        command = ["src", "search", "-json", query]
+        await log(f"Running Sourcegraph search for {clean_target}")
+
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            cwd=str(context.workdir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            env=env,
+        )
+
+        assert process.stdout is not None
+        before_target = len(discovered)
+        async for raw_line in process.stdout:
+            line = raw_line.decode(errors="ignore").strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                await log(f"source_scan: non-JSON output received: {line[:200]}")
+                continue
+            previous_count = len(discovered)
+            collect_from_node(payload, pattern)
+            if len(discovered) > previous_count:
+                await log(f"source_scan: {len(discovered)} hostnames collected so far")
+
+        return_code = await process.wait()
+        if return_code != 0:
+            await log(f"Sourcegraph search exited with code {return_code} for {clean_target}")
+        else:
+            await log(f"Sourcegraph search completed for {clean_target}")
+        await log(
+            f"source_scan: {len(discovered) - before_target} new hostnames found for {clean_target}"
+        )
+
+    async with aiofiles.open(output_path, "w") as handle:
+        for entry in sorted(discovered):
+            await handle.write(entry + "\n")
+
+    if discovered:
+        await log(f"source_scan wrote {len(discovered)} hostnames to {output_path.name}")
+    else:
+        await log("source_scan found no hostnames")
+    return output_path
+
+
 try:
     import aiofiles  # type: ignore
 except ImportError:  # pragma: no cover
@@ -139,7 +228,12 @@ def build_tool_definitions() -> Dict[str, ToolDefinition]:
         "chaos": simple_command("chaos", "-silent", output="chaos.txt"),
         "github-subdomains": simple_command("github-subdomains", output="github-subdomains.txt"),
         "gitlab-subdomains": simple_command("gitlab-subdomains", output="gitlab-subdomains.txt"),
-        "source_scan": simple_command("source_scan", output="source_scan.txt"),
+        "source_scan": ToolDefinition(
+            name="source_scan",
+            custom_runner=run_source_scan,
+            output_file="source_scan.txt",
+            description="Enumerate potential hostnames via Sourcegraph searches",
+        ),
         "urlfinder": simple_command("urlfinder", output="urlfinder.txt"),
         "httpx": simple_command("httpx", "-silent", output="httpx.txt"),
         "dnsx": simple_command("dnsx", "-silent", output="dnsx.txt"),

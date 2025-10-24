@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
+import { parseJobId } from './utils/job';
 
 const TOOL_OPTIONS = [
   { id: 'certificate_search', label: 'Certificate search' },
@@ -61,15 +62,6 @@ const buildApiUrl = (path) => {
   }
 
   return url.toString();
-};
-
-const parseJobId = (payload) => {
-  if (!payload) return null;
-  if (typeof payload === 'string') return payload;
-  if (typeof payload === 'object') {
-    return payload.jobId ?? payload.id ?? null;
-  }
-  return null;
 };
 
 function App() {

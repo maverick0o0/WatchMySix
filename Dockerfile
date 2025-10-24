@@ -82,11 +82,11 @@ RUN set -eux; \
 
 # 9) Recursive DNS resolvers list
 RUN mkdir -p /opt/watchmysix/resolvers \
-  && cat <<'EOF' > /opt/watchmysix/resolvers/resolvers.txt
-8.8.4.4
-129.250.35.251
-208.67.222.222
-EOF
+  && printf '%s\n' \
+    8.8.4.4 \
+    129.250.35.251 \
+    208.67.222.222 \
+  > /opt/watchmysix/resolvers/resolvers.txt
 
 # 10) Smoke check (presence only; اخطار می‌دهد ولی build را نمی‌خواباند)
 RUN set -eux; \

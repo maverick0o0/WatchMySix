@@ -65,6 +65,38 @@ For Go-based tools installed with `go install`, rebuild the image to ensure you 
 - **Rate limiting / network errors:** Tools like `crtsh` and Sourcegraph queries depend on external services. If you experience rate limits, try again later or configure authentication tokens where supported.
 - **Wordlist updates:** Replace the files inside `/opt/watchmysix/wordlists` with your own if you need customized lists.
 
+## Running the Backend API
+
+The backend service powers workflows such as Sourcegraph and crt.sh lookups. To run it locally:
+
+```bash
+cd backend
+poetry install
+poetry run python -m app
+```
+
+By default the FastAPI application binds to `0.0.0.0:8000`. You can customize behavior with environment variables exposed via `AppSettings`, including:
+
+- `WATCHMYSIX_DATA_DIR` — root directory where job artifacts and archives are written.
+- `WATCHMYSIX_MAX_CONCURRENCY` — number of concurrent jobs the worker pool will process.
+- `WATCHMYSIX_SOURCEGRAPH_TOKEN`, `WATCHMYSIX_CRTSH_API_KEY`, and other provider-specific keys — supply them through a `.env` file or shell environment.
+
+Once running, the service exposes REST endpoints such as `/jobs`, `/jobs/{job_id}`, `/jobs/{job_id}/logs`, `/jobs/{job_id}/artifacts`, and `/jobs/{job_id}/archive`, plus the WebSocket endpoint `/ws/jobs/{job_id}/logs` for streaming log output.
+
+## Running the Frontend UI
+
+The React frontend consumes the backend API to orchestrate jobs and display results. Start it with:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The Vite development server listens on `http://localhost:5173` by default. Point the UI to your backend by setting `VITE_API_BASE_URL` via an `.env` file or shell export before running `npm run dev`. The interface expects the backend endpoints listed above, including the `/jobs` REST routes and the `ws/jobs/.../logs` WebSocket.
+
+To produce an optimized build for deployment, run `npm run build`. Bundled assets will be output to `frontend/dist`.
+
 ## License
 
 This repository currently does not include an explicit license. Add one if you plan to distribute modified versions.

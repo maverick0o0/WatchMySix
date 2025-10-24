@@ -31,12 +31,36 @@ const TOOL_ID_MAP = {
 
 const API_BASE_URL = (import.meta.env?.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
+const resolveBaseUrl = () => {
+  if (API_BASE_URL) {
+    if (/^[a-zA-Z][a-zA-Z\d+.-]*:\/\//.test(API_BASE_URL)) {
+      return API_BASE_URL;
+    }
+
+    const origin = window.location.origin.replace(/\/$/, '');
+    const relativeBase = API_BASE_URL.startsWith('/') ? API_BASE_URL : `/${API_BASE_URL}`;
+    return `${origin}${relativeBase}`;
+  }
+
+  return window.location.origin;
+};
+
 const buildApiUrl = (path) => {
   if (!path.startsWith('/')) {
     throw new Error(`API paths must start with a leading slash. Received: ${path}`);
   }
 
-  return `${API_BASE_URL}${path}`;
+  const url = new URL(path, resolveBaseUrl());
+
+  if (path.startsWith('/ws/')) {
+    if (url.protocol === 'https:') {
+      url.protocol = 'wss:';
+    } else if (url.protocol === 'http:') {
+      url.protocol = 'ws:';
+    }
+  }
+
+  return url.toString();
 };
 
 const parseJobId = (payload) => {
@@ -58,15 +82,25 @@ function App() {
   const [error, setError] = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
 
-  const eventSourceRef = useRef(null);
+  const logSocketRef = useRef(null);
   const artifactTimerRef = useRef(null);
 
   const hasArtifacts = useMemo(() => artifacts.length > 0, [artifacts]);
 
   const cleanupSubscriptions = () => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
+    if (logSocketRef.current) {
+      const socket = logSocketRef.current;
+      logSocketRef.current = null;
+      try {
+        if (
+          typeof WebSocket === 'undefined' ||
+          (socket.readyState !== WebSocket.CLOSING && socket.readyState !== WebSocket.CLOSED)
+        ) {
+          socket.close();
+        }
+      } catch (err) {
+        console.debug('Error closing WebSocket', err);
+      }
     }
     if (artifactTimerRef.current !== null) {
       window.clearInterval(artifactTimerRef.current);
@@ -123,30 +157,31 @@ function App() {
 
     cleanupSubscriptions();
 
-    const source = new EventSource(buildApiUrl(`/api/jobs/${encodeURIComponent(id)}/logs`));
-    eventSourceRef.current = source;
+    const socket = new WebSocket(buildApiUrl(`/ws/jobs/${encodeURIComponent(id)}/logs`));
+    logSocketRef.current = socket;
 
-    source.onmessage = (event) => {
-      setLogs((prev) => [...prev, event.data]);
+    socket.onmessage = (event) => {
+      const message = typeof event.data === 'string' ? event.data : String(event.data);
+      setLogs((prev) => [...prev, message]);
     };
 
-    const handleCompletion = () => {
-      setStatusMessage('Recon run finished. You can download the artifacts below.');
+    socket.onclose = (event) => {
+      if (event.wasClean) {
+        setError(null);
+        setStatusMessage('Recon run finished. You can download the artifacts below.');
+      } else {
+        setError('Lost connection to the log stream. Retrying may be necessary.');
+        setStatusMessage('Log stream disconnected unexpectedly.');
+      }
       setIsRunning(false);
       cleanupSubscriptions();
       fetchArtifacts(id);
     };
 
-    source.addEventListener('complete', handleCompletion);
-    source.addEventListener('done', handleCompletion);
-
-    source.addEventListener('artifact', () => {
-      fetchArtifacts(id);
-    });
-
-    source.onerror = (event) => {
-      console.error('EventSource error', event);
-      setError('Lost connection to the log stream. Retrying may be necessary.');
+    socket.onerror = (event) => {
+      console.error('WebSocket error', event);
+      setError('An error occurred while streaming logs. Retrying may be necessary.');
+      setStatusMessage('Log stream interrupted.');
       setIsRunning(false);
       cleanupSubscriptions();
     };

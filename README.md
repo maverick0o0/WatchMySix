@@ -65,6 +65,22 @@ For Go-based tools installed with `go install`, rebuild the image to ensure you 
 - **Rate limiting / network errors:** Tools like `crtsh` and Sourcegraph queries depend on external services. If you experience rate limits, try again later or configure authentication tokens where supported.
 - **Wordlist updates:** Replace the files inside `/opt/watchmysix/wordlists` with your own if you need customized lists.
 
+## Running the Full Stack with Docker Compose
+
+If you want the frontend and backend to run together without starting each service manually, use Docker Compose. The provided configuration builds both applications and links them so the frontend automatically points to the backend API.
+
+```bash
+docker compose up --build
+```
+
+- The backend API is available at [http://localhost:8000](http://localhost:8000).
+- The Vite development server for the frontend is available at [http://localhost:5173](http://localhost:5173).
+- Application data produced by the backend is stored in a Docker volume named `watchmysix_backend-data`.
+
+To stop the stack, press `Ctrl+C` or run `docker compose down`. Re-run `docker compose up --build` whenever you need
+to rebuild images after changing dependencies. You can inspect logs with `docker compose logs -f backend` or
+`docker compose logs -f frontend`.
+
 ## Running the Backend API
 
 The backend service powers workflows such as Sourcegraph and crt.sh lookups. To run it locally:

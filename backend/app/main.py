@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from .config import settings
@@ -8,6 +9,14 @@ from .job_runner import JobNotFound, job_manager
 from .models import ArtifactList, JobDetail, JobListResponse, JobRequest, JobResponse
 
 app = FastAPI(title="WatchMySix Backend", version="0.1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.frontend_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_credentials=True,
+)
 
 
 @app.on_event("startup")

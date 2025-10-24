@@ -17,6 +17,11 @@ from .models import BruteforceConfig, JobRequest, JobStatus, ToolResult
 from .tools import TOOL_DEFINITIONS, ToolContext, ToolDefinition, run_command
 
 
+DEFAULT_STATIC_WORDLIST = Path("/opt/watchmysix/wordlists/static-dns/best-dns-wordlist.txt")
+DEFAULT_DYNAMIC_WORDLIST = Path("/opt/watchmysix/wordlists/dynamic-dns/words-merged.txt")
+DEFAULT_RESOLVERS = Path("/opt/watchmysix/resolvers/resolvers.txt")
+
+
 @dataclass
 class Job:
     id: str
@@ -78,6 +83,7 @@ class JobManager:
             job.updated_at = datetime.utcnow()
 
     async def _run_job(self, job: Job) -> None:
+        self._apply_bruteforce_defaults(job.request)
         available_tools = self._resolve_tools(job.request)
         context = ToolContext(
             job_id=job.id,
@@ -97,6 +103,18 @@ class JobManager:
         if tool_tasks:
             await asyncio.gather(*tool_tasks)
         await self._merge_artifacts(job)
+
+    def _apply_bruteforce_defaults(self, request: JobRequest) -> None:
+        if request.static_bruteforce.enabled:
+            if not request.static_bruteforce.wordlist:
+                request.static_bruteforce.wordlist = str(DEFAULT_STATIC_WORDLIST)
+            if not request.static_bruteforce.resolvers:
+                request.static_bruteforce.resolvers = str(DEFAULT_RESOLVERS)
+        if request.dynamic_bruteforce.enabled:
+            if not request.dynamic_bruteforce.wordlist:
+                request.dynamic_bruteforce.wordlist = str(DEFAULT_DYNAMIC_WORDLIST)
+            if not request.dynamic_bruteforce.resolvers:
+                request.dynamic_bruteforce.resolvers = str(DEFAULT_RESOLVERS)
 
     def _resolve_tools(self, request: JobRequest) -> Dict[str, ToolDefinition]:
         tools = {

@@ -15,7 +15,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     GOBIN=/usr/local/bin \
     PATH=/usr/local/go/bin:/root/go/bin:${PIPX_BIN_DIR}:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-SHELL ["/bin/bash", "-lc"]
+SHELL ["/bin/bash", "-c"]
 
 WORKDIR /app
 
